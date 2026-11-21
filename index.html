@@ -201,6 +201,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 
 /* Review IT: explicit day-range filters and compact report action. */
 .review-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:9px 0 5px}.review-heading .h{margin:0}.review-pdf{border:1px solid #b9d5ed;background:#eaf4ff;color:#1769c2;border-radius:11px;min-height:42px;padding:8px 10px;font-size:12px;font-weight:800;white-space:nowrap}.review-period-label{font-size:12px;color:#58728b;font-weight:700;margin:12px 0 7px}.review-periods{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.review-periods button{border:1px solid #cbdce9;border-radius:13px;background:white;color:#12365a;min-height:62px;padding:7px 2px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.review-periods button strong{font-size:20px;line-height:1.1}.review-periods button span{font-size:10px;font-weight:650}.review-periods button.selected{background:#1769c2;color:white;border-color:#1769c2}.review-periods button:focus-visible,.review-pdf:focus-visible{outline:3px solid #df9c2f;outline-offset:2px}
+.it-report-preview{position:fixed;inset:0;z-index:100;background:#f0f6fc;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.it-report-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 15px;background:white;border-bottom:1px solid #d9e7f3}.it-report-title{display:flex;flex-direction:column;color:#12365a}.it-report-title strong{font-size:17px}.it-report-title small{font-size:11px;color:#58728b}.it-report-close{border:0;background:#eaf4ff;color:#12365a;border-radius:11px;font-size:19px;min-width:44px;min-height:44px}.it-report-document{flex:1;min-height:0;background:#e1eaf2}.it-report-document iframe{display:block;width:100%;height:100%;border:0;background:white}.it-report-actions{display:flex;gap:7px;padding:10px 12px;background:white;border-top:1px solid #d9e7f3}.it-report-actions button{flex:1;min-width:0;padding:11px 5px;font-size:12px}.it-report-actions .primary{width:auto}@media(max-width:360px){.it-report-actions button{font-size:11px}}
 </style></head><body><main class="app"><header class="brand"><div class="brand-watermark" aria-hidden="true"><svg class="it-signature" viewBox="0 0 155 94" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="itInk" x1="0" x2="1" y1="1" y2="0"><stop stop-color="#073b79"/><stop offset="1" stop-color="#176fc3"/></linearGradient><linearGradient id="itOrbit" x1="0" x2="1"><stop stop-color="#28c5bd"/><stop offset="1" stop-color="#04aab6"/></linearGradient></defs><path d="M13 72C-2 87 36 91 79 73C118 57 150 26 137 12C128 2 112 6 96 12" fill="none" stroke="url(#itOrbit)" stroke-width="3.2" stroke-linecap="round"/><g transform="translate(27 17) skewX(-14)" fill="url(#itInk)"><path d="M4 2h20L13 58H-7Z"/><path d="M31 2h77l-4 15H76L67 58H47l9-41H27Z"/></g></svg></div><div class="brand-lockup"><span class="brand-logo" aria-label="IT"><svg class="it-signature" viewBox="0 0 155 94" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><linearGradient id="itInk" x1="0" x2="1" y1="1" y2="0"><stop stop-color="#073b79"/><stop offset="1" stop-color="#176fc3"/></linearGradient><linearGradient id="itOrbit" x1="0" x2="1"><stop stop-color="#28c5bd"/><stop offset="1" stop-color="#04aab6"/></linearGradient></defs><path d="M13 72C-2 87 36 91 79 73C118 57 150 26 137 12C128 2 112 6 96 12" fill="none" stroke="url(#itOrbit)" stroke-width="3.2" stroke-linecap="round"/><g transform="translate(27 17) skewX(-14)" fill="url(#itInk)"><path d="M4 2h20L13 58H-7Z"/><path d="M31 2h77l-4 15H76L67 58H47l9-41H27Z"/></g></svg></span><span class="brand-name"><span>Insu</span><span class="brand-accent">Tap</span></span></div><small class="brand-tagline">EVERY UN<span class="tagline-it">IT</span>. ONE TAP.</small></header><div id="screen"></div><div class="notice" id="notice" role="status"></div><div id="toastHost" aria-live="polite"></div></main><nav id="tabs" class="tabs" aria-label="Main navigation"></nav><script>
 (()=>{'use strict';
 const KEY='doseclick-pilot-v2',OLD='doseclick-pilot-v1';
@@ -322,15 +324,42 @@ function reviewPdfBytes(){
  pdf+=`trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
  return new Blob([pdf],{type:'application/pdf'});
 }
-async function openReviewPdf(){
+// Preview first: sharing and saving happen only after the user chooses them.
+let reportPreview=null;
+function closeReportPreview(){
+ const overlay=document.getElementById('it-report-preview');
+ if(overlay)overlay.remove();
+ if(reportPreview){URL.revokeObjectURL(reportPreview.url);reportPreview=null;}
+ document.body.style.overflow='';
+}
+function openReviewPdf(){
  const n=Number(state.period)||30,filename=`InsuTap_${n}-Day_Report_${day(new Date())}.pdf`;
- try{const blob=reviewPdfBytes(),file=new File([blob],filename,{type:'application/pdf'});
-  if(navigator.canShare&&navigator.share&&navigator.canShare({files:[file]})){
-   try{await navigator.share({files:[file],title:`InsuTap ${n}-Day Report`});return}catch(e){if(e.name==='AbortError')return;}
-  }
-  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-  notice('PDF saved. Open it in Files to view or share.');
- }catch(e){notice('Could not create the PDF. Your saved records are unchanged.');}
+ try{
+  closeReportPreview();
+  const blob=reviewPdfBytes(),url=URL.createObjectURL(blob);
+  reportPreview={blob,url,filename,n};
+  document.body.style.overflow='hidden';
+  const overlay=document.createElement('section');overlay.id='it-report-preview';
+  overlay.className='it-report-preview';overlay.setAttribute('role','dialog');
+  overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',`${n}-day InsuTap PDF report preview`);
+  overlay.innerHTML=`<div class="it-report-toolbar"><div class="it-report-title"><strong>${n}-Day Report</strong><small>Preview before sharing</small></div><button type="button" class="it-report-close" data-report-close aria-label="Close report preview">✕</button></div><div class="it-report-document"><iframe title="${n}-day InsuTap activity PDF" src="${url}#toolbar=0" loading="eager"></iframe></div><div class="it-report-actions"><button type="button" class="outline" data-report-open>Open Full PDF</button><button type="button" class="outline" data-report-save>Save PDF</button><button type="button" class="primary" data-report-share>Share Report</button></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-report-close]').addEventListener('click',closeReportPreview);
+  overlay.querySelector('[data-report-open]').addEventListener('click',()=>window.open(url,'_blank','noopener'));
+  overlay.querySelector('[data-report-save]').addEventListener('click',()=>{const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();notice('PDF download requested. Check Files or Downloads.');});
+  overlay.querySelector('[data-report-share]').addEventListener('click',async()=>{
+   try{
+    const file=new File([blob],filename,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.share&&navigator.canShare({files:[file]})){
+     await navigator.share({files:[file],title:`InsuTap ${n}-Day Report`});
+    }else{
+     window.open(url,'_blank','noopener');
+     notice('Use your browser’s Share button to send or save the report.');
+    }
+   }catch(e){if(e.name!=='AbortError')notice('Sharing unavailable. Try Open Full PDF or Save PDF.');}
+  });
+  overlay.querySelector('[data-report-close]').focus();
+ }catch(e){closeReportPreview();notice('Could not preview the PDF. Your saved records are unchanged.');}
 }
 
 function summary(){return summarize(scopedRecords())}
